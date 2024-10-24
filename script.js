@@ -21,7 +21,9 @@
     function showToast(message) {
         // Create the toast container
         var toast = document.createElement('div');
-        toast.style.position = 'fixed';
+        // toast.style.position = 'fixed';
+        toast.style.position = 'absolute';
+        toast.style.top = window.scrollY + 20 + 'px'; // Adjust for scroll position
         toast.style.bottom = '20px';
         toast.style.right = '20px';
         toast.style.padding = '15px';
@@ -120,102 +122,66 @@
 
         // Helper function to handle downloads (Original, Resample, or H@H)
         function handleDownloadButton(archiveType) {
-            console.log("Fetching gallery page: " + galleryLink); // Log the gallery link being accessed
-
-            // Step 1: Fetch the gallery page to find the archive download link
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: galleryLink,
-                onload: function(response) {
+            console.log("Fetching gallery page: " + galleryLink);
+        
+            // Step 1: Fetch the gallery page
+            fetch(galleryLink)
+                .then(response => response.text())
+                .then(responseText => {
                     var parser = new DOMParser();
-                    var doc = parser.parseFromString(response.responseText, 'text/html');
-
+                    var doc = parser.parseFromString(responseText, 'text/html');
+        
                     // Find the anchor element with "onclick" containing "popUp"
                     var archiveDownloadAnchor = doc.querySelector('a[onclick^="return popUp"]');
-                    
                     if (archiveDownloadAnchor) {
-                        console.log("Found archiveDownloadAnchor:", archiveDownloadAnchor); // Log the anchor element
-
+                        console.log("Found archiveDownloadAnchor:", archiveDownloadAnchor);
+        
                         // Extract the URL from the onclick attribute (popUp() call)
                         var onclickContent = archiveDownloadAnchor.getAttribute('onclick');
                         var archiveUrlMatch = onclickContent.match(/popUp\('(.+?)'/);
-                        
                         if (archiveUrlMatch && archiveUrlMatch[1]) {
                             var archiveUrl = archiveUrlMatch[1];
-                            console.log("Extracted archive URL:", archiveUrl); // Log the extracted URL
-
-                            // Step 2: Fetch the page where the form exists
-                            GM_xmlhttpRequest({
-                                method: 'GET',
-                                url: archiveUrl,
-                                onload: function(archivePageResponse) {
-                                    var archiveDoc = parser.parseFromString(archivePageResponse.responseText, 'text/html');
-
-                                    // Check if we are handling the H@H download
-                                    if (archiveType === 'hath') {
-                                        // Handle H@H download by submitting the form for H@H server
-                                        var formElement = archiveDoc.querySelector('#hathdl_form');
-                                        if (formElement) {
-                                            var formAction = formElement.getAttribute('action');
-                                            var formData = new FormData(formElement);
-                                            formData.set('hathdl_xres', 'org'); // Set to 'Original'
-
-                                            // Submit the form for remote server download
-                                            GM_xmlhttpRequest({
-                                                method: 'POST',
-                                                url: formAction,
-                                                data: new URLSearchParams(formData), // Simulate the form submission
-                                                onload: function(formSubmitResponse) {
-                                                    var successMessage = "An original resolution download has been queued for client";
-                                                    if (formSubmitResponse.responseText.includes(successMessage)) {
-                                                        showToast("H@H download successfully queued!");
-                                                        console.log("H@H download successfully queued.");
-                                                    } else {
-                                                        console.log("Failed to queue H@H download.");
-                                                    }
-                                                }
-                                            });
-                                        } else {
-                                            showToast('H@H form not found!');
-                                            console.log("Form element for H@H download not found.");
-                                        }
-                                        return;
-                                    }
-
-                                    // For original or resample downloads
+                            console.log("Extracted archive URL:", archiveUrl);
+        
+                            // Step 2: Fetch the archive page
+                            fetch(archiveUrl)
+                                .then(response => response.text())
+                                .then(responseText => {
+                                    var archiveDoc = parser.parseFromString(responseText, 'text/html');
+        
+                                    // Find the form for original or resample archive
                                     var formElement = archiveDoc.querySelector('form[action*="archiver.php"]');
                                     var formAction = formElement.getAttribute('action');
-                                    console.log("Form action URL:", formAction); // Log the form action URL
-
-                                    // Step 3: Simulate submitting the form by POSTing the request
+                                    console.log("Form action URL:", formAction);
+        
+                                    // Step 3: Submit the form via POST to start download
                                     var dltypeValue = archiveType === 'original' ? 'org' : 'res';
-                                    GM_xmlhttpRequest({
+                                    fetch(formAction, {
                                         method: 'POST',
-                                        url: formAction,
                                         headers: {
                                             'Content-Type': 'application/x-www-form-urlencoded'
                                         },
-                                        data: `dltype=${dltypeValue}&dlcheck=Download ${archiveType === 'original' ? 'Original' : 'Resample'} Archive`,
-                                        onload: function(formSubmitResponse) {
-                                            var formSubmitDoc = parser.parseFromString(formSubmitResponse.responseText, 'text/html');
-
+                                        body: `dltype=${dltypeValue}&dlcheck=Download ${archiveType === 'original' ? 'Original' : 'Resample'} Archive`
+                                    })
+                                        .then(response => response.text())
+                                        .then(responseText => {
+                                            var formSubmitDoc = parser.parseFromString(responseText, 'text/html');
+        
                                             // Extract the final redirect URL
                                             var redirectLink = formSubmitDoc.querySelector('#continue a') || formSubmitDoc.querySelector('script').innerText.match(/document\.location\s*=\s*"(.+?)"/)[1];
-
+        
                                             if (redirectLink) {
                                                 console.log(`Found final ${archiveType} download URL from redirect:`, redirectLink);
-
-                                                // Poll for the final download link
+        
+                                                // Poll the final download link
                                                 var checkForDownloadLink = function() {
-                                                    GM_xmlhttpRequest({
-                                                        method: 'GET',
-                                                        url: redirectLink,
-                                                        onload: function(downloadPageResponse) {
-                                                            var downloadDoc = parser.parseFromString(downloadPageResponse.responseText, 'text/html');
-
-                                                            // Check for the download link or message
+                                                    fetch(redirectLink)
+                                                        .then(response => response.text())
+                                                        .then(responseText => {
+                                                            var downloadDoc = parser.parseFromString(responseText, 'text/html');
+        
+                                                            // Check for the download link
                                                             var finalDownloadLink = downloadDoc.querySelector('a[href^="/archive/"]') || downloadDoc.body.innerHTML.includes("Click Here To Start Downloading");
-
                                                             if (finalDownloadLink) {
                                                                 var finalUrl = redirectLink + "?start=1";
                                                                 console.log("Final download URL:", finalUrl);
@@ -229,31 +195,32 @@
                                                                 console.log("Download link not available yet. Retrying in 2 seconds...");
                                                                 setTimeout(checkForDownloadLink, 2000);
                                                             }
-                                                        }
-                                                    });
+                                                        })
+                                                        .catch(error => console.error("Error fetching download page:", error));
                                                 };
-
+        
                                                 // Start polling for the download link
                                                 checkForDownloadLink();
                                             } else {
-                                                alert('Could not extract the final download URL!');
-                                                console.log("Redirect URL not found in page:", formSubmitResponse.responseText);
+                                                showToast('Could not extract the final download URL!');
+                                                console.log("Redirect URL not found in page:", responseText);
                                             }
-                                        }
-                                    });
-                                }
-                            });
+                                        })
+                                        .catch(error => console.error("Error submitting the form:", error));
+                                })
+                                .catch(error => console.error("Error fetching archive page:", error));
                         } else {
-                            alert('Could not extract archive URL from onclick attribute!');
+                            showToast('Could not extract archive URL from onclick attribute!');
                             console.log("Onclick content:", onclickContent);
                         }
                     } else {
-                        alert('Archive download link not found!');
-                        console.log("Archive download link not found in page:", response.responseText);
+                        showToast('Archive download link not found!');
+                        console.log("Archive download link not found in page:", responseText);
                     }
-                }
-            });
+                })
+                .catch(error => console.error("Error fetching gallery page:", error));
         }
+        
 
         // Check if we are on a touch device
         var isTouchDevice = 'ontouchstart' in document.documentElement;
