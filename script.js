@@ -255,14 +255,19 @@
             });
         }
 
-        // Add event listeners for all buttons
-        downloadOriginalButton.addEventListener('click', function() {
+        // Check if we are on a touch device
+        var isTouchDevice = 'ontouchstart' in document.documentElement;
+
+        // Use click event for desktops and touchend for touch devices
+        var buttonEvent = isTouchDevice ? 'touchend' : 'click';
+
+        downloadOriginalButton.addEventListener(buttonEvent, function() {
             handleDownloadButton('original');
         });
-        downloadResampleButton.addEventListener('click', function() {
+        downloadResampleButton.addEventListener(buttonEvent, function() {
             handleDownloadButton('resample');
         });
-        downloadHaHButton.addEventListener('click', function() {
+        downloadHaHButton.addEventListener(buttonEvent, function() {
             handleDownloadButton('hath');
         });
     });
